@@ -1,0 +1,310 @@
+@baseUrl = http://localhost:8080
+
+###############################################
+### AMBIENTES
+###############################################
+
+### 1. Listar ambientes (deberían salir los 4 que carga el CommandLineRunner/data.sql)
+GET {{baseUrl}}/api/ambientes
+Accept: application/json
+
+### 2. Registrar un ambiente nuevo - caso exitoso
+POST {{baseUrl}}/api/ambientes
+Content-Type: application/json
+
+{
+  "nombre": "Sala 305",
+  "tipo": "SALA",
+  "capacidad": 25,
+  "activo": true
+}
+
+### 3. Registrar un ambiente - caso de error (capacidad inválida, ej. negativa o cero)
+POST {{baseUrl}}/api/ambientes
+Content-Type: application/json
+
+{
+  "nombre": "Sala fallida",
+  "tipo": "LABORATORIO",
+  "capacidad": -5,
+  "activo": true
+}
+
+
+###############################################
+### RESERVAS - CRUD básico
+###############################################
+
+### 4. Crear una reserva válida (ajusta ambienteId según lo que tengas en BD)
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Juan Pérez",
+  "fechaHoraInicio": "2026-06-23T08:00:00",
+  "fechaHoraFin": "2026-06-23T10:00:00",
+  "numeroAprendices": 20
+}
+
+
+###############################################
+### REGLA 1: Sin cruces de horario (solapamiento)
+###############################################
+
+### 5. Caso exitoso: reserva en horario libre, mismo ambiente
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Ana Gómez",
+  "fechaHoraInicio": "2026-06-23T11:00:00",
+  "fechaHoraFin": "2026-06-23T12:00:00",
+  "numeroAprendices": 15
+}
+
+### 6. Caso de error: se solapa con la reserva creada en el paso 4 (8:00-10:00)
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Carlos Ruiz",
+  "fechaHoraInicio": "2026-06-23T09:00:00",
+  "fechaHoraFin": "2026-06-23T11:00:00",
+  "numeroAprendices": 10
+}
+# Esperado: 400 o 409, con mensaje indicando solapamiento de horario
+
+
+###############################################
+### REGLA 2: Capacidad del ambiente
+###############################################
+
+### 7. Caso exitoso: número de aprendices dentro de la capacidad
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Laura Díaz",
+  "fechaHoraInicio": "2026-06-23T13:00:00",
+  "fechaHoraFin": "2026-06-23T14:00:00",
+  "numeroAprendices": 20
+}
+
+### 8. Caso de error: número de aprendices supera la capacidad del ambiente
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Pedro López",
+  "fechaHoraInicio": "2026-06-23T15:00:00",
+  "fechaHoraFin": "2026-06-23T16:00:00",
+  "numeroAprendices": 999
+}
+# Esperado: 400, mensaje indicando capacidad excedida
+
+
+###############################################
+### REGLA 3: Horario institucional (6:00-22:00, duración 1-4 horas)
+###############################################
+
+### 9. Caso exitoso: dentro del horario institucional, duración válida
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 2,
+  "nombreInstructor": "Sofía Ramírez",
+  "fechaHoraInicio": "2026-06-23T07:00:00",
+  "fechaHoraFin": "2026-06-23T09:00:00",
+  "numeroAprendices": 10
+}
+
+### 10. Caso de error: fuera del horario institucional (antes de las 6:00)
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Diego Torres",
+  "fechaHoraInicio": "2026-06-23T04:00:00",
+  "fechaHoraFin": "2026-06-23T06:00:00",
+  "numeroAprendices": 10
+}
+# Esperado: 400, mensaje indicando que está fuera del horario institucional
+
+### 11. Caso de error: duración mayor a 4 horas
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Diego Torres",
+  "fechaHoraInicio": "2026-06-23T07:00:00",
+  "fechaHoraFin": "2026-06-23T12:00:00",
+  "numeroAprendices": 10
+}
+# Esperado: 400, mensaje indicando duración inválida (debe ser entre 1 y 4 horas)
+
+
+###############################################
+### REGLA 4: Ambientes inactivos
+###############################################
+
+### 12. Primero crea/ten un ambiente inactivo para esta prueba (activo = false)
+POST {{baseUrl}}/api/ambientes
+Content-Type: application/json
+
+{
+  "nombre": "Laboratorio en mantenimiento",
+  "tipo": "LABORATORIO",
+  "capacidad": 30,
+  "activo": false
+}
+
+### 13. Caso de error: reservar un ambiente con activo = false
+# OJO: reemplaza "ambienteId" por el id real que devolvió el paso 12
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 11,
+  "nombreInstructor": "Mario Vega",
+  "fechaHoraInicio": "2026-06-23T10:00:00",
+  "fechaHoraFin": "2026-06-23T11:00:00",
+  "numeroAprendices": 10
+}
+# Esperado: 400, mensaje indicando que el ambiente está inactivo
+
+
+###############################################
+### REGLA 5: Límite de 3 reservas activas por instructor al día
+###############################################
+
+### 14. Reserva 1 del día para el mismo instructor
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 2,
+  "nombreInstructor": "Instructor Tope",
+  "fechaHoraInicio": "2026-06-24T06:00:00",
+  "fechaHoraFin": "2026-06-24T07:00:00",
+  "numeroAprendices": 5
+}
+
+### 15. Reserva 2 del día para el mismo instructor
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 2,
+  "nombreInstructor": "Instructor Tope",
+  "fechaHoraInicio": "2026-06-24T08:00:00",
+  "fechaHoraFin": "2026-06-24T09:00:00",
+  "numeroAprendices": 5
+}
+
+### 16. Reserva 3 del día para el mismo instructor (caso exitoso, llega al límite)
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 2,
+  "nombreInstructor": "Instructor Tope",
+  "fechaHoraInicio": "2026-06-24T10:00:00",
+  "fechaHoraFin": "2026-06-24T11:00:00",
+  "numeroAprendices": 5
+}
+
+### 17. Reserva 4 del día para el mismo instructor (caso de error, supera el límite)
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 2,
+  "nombreInstructor": "Instructor Tope",
+  "fechaHoraInicio": "2026-06-24T12:00:00",
+  "fechaHoraFin": "2026-06-24T13:00:00",
+  "numeroAprendices": 5
+}
+# Esperado: 400 o 409, mensaje indicando límite de 3 reservas activas por día superado
+
+
+###############################################
+### REGLA 6: Cancelación con anticipación de 2 horas
+###############################################
+
+### 18. Crear una reserva lejana en el tiempo para poder cancelarla con éxito
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 3,
+  "nombreInstructor": "Camila Soto",
+  "fechaHoraInicio": "2026-06-30T09:00:00",
+  "fechaHoraFin": "2026-06-30T10:00:00",
+  "numeroAprendices": 5
+}
+
+### 19. Cancelar esa reserva (caso exitoso, faltan más de 2 horas)
+# Reemplaza {id} por el id devuelto en el paso 18
+PATCH {{baseUrl}}/api/reservas/3/cancelar
+Content-Type: application/json
+
+### 20. Crear una reserva muy próxima en el tiempo (ajusta la fecha/hora a "ahora + 30 min" al ejecutar)
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 5,
+  "nombreInstructor": "Camila Soto",
+  "fechaHoraInicio": "2026-06-22T19:00:00",
+  "fechaHoraFin": "2026-06-22T20:30:00",
+  "numeroAprendices": 5
+}
+
+### 21. Intentar cancelarla faltando menos de 2 horas (caso de error)
+# Reemplaza {id} por el id devuelto en el paso 20
+PATCH {{baseUrl}}/api/reservas/11/cancelar
+Content-Type: application/json
+# Esperado: 400 o 409, mensaje indicando que no se puede cancelar (menos de 2h de anticipación)
+
+
+###############################################
+### REGLA 7: No se reserva en el pasado
+###############################################
+
+### 22. Caso de error: fecha de inicio en el pasado
+POST {{baseUrl}}/api/reservas
+Content-Type: application/json
+
+{
+  "ambienteId": 1,
+  "nombreInstructor": "Valentina Cruz",
+  "fechaHoraInicio": "2020-01-01T08:00:00",
+  "fechaHoraFin": "2020-01-01T09:00:00",
+  "numeroAprendices": 5
+}
+# Esperado: 400, mensaje indicando que no se puede reservar en el pasado
+
+
+###############################################
+### CONSULTAS DE DISPONIBILIDAD / OCUPACIÓN
+###############################################
+
+### 23. Ver reservas activas de un ambiente en una fecha
+GET {{baseUrl}}/api/ambientes/1/reservas?fecha=2026-06-23
+Accept: application/json
+
+### 24. Listar ambientes disponibles en un rango de tiempo
+GET {{baseUrl}}/api/ambientes/disponibles?inicio=2026-06-23T08:00:00&fin=2026-06-23T09:00:00
+Accept: application/json
+
+### 25. Reporte de ocupación por ambiente en una fecha
+GET {{baseUrl}}/api/reportes/ocupacion?fecha=2026-06-23
+Accept: application/json
